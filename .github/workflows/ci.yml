@@ -18,19 +18,19 @@ jobs:
   integration-test:
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Checkout Code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: 📦 Install Dependencies
+      - name: Install Dependencies
         working-directory: ./app
         run: pip install -r requirements.txt
 
-      - name: 🐳 Test Docker Build
+      - name: Test Docker Build
         working-directory: ./app
         run: docker build -t apnea-api-test .
 
@@ -41,11 +41,11 @@ jobs:
     needs: integration-test
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Checkout Code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       # 1. Fetch Secrets from Vault FIRST using AppRole (Updated to v3)
-      - name: 🔐 Import Secrets from HCP Vault
+      - name: Import Secrets from HCP Vault
         uses: hashicorp/vault-action@v3
         with:
           url: 'https://vault-cluster-public-vault-8c7a912a.0a2ef11a.z1.hashicorp.cloud:8200' 
@@ -67,7 +67,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       # 3. Build and Push Image to ECR
-      - name: 🐳 Build and Push Image to ECR
+      - name: Build and Push Image to ECR
         working-directory: ./app
         run: |
           AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -82,7 +82,7 @@ jobs:
           docker push $ECR_REGISTRY/apnea-api:latest
 
       # 4. Set up SSH Key for Ansible
-      - name: 🔑 Set up SSH Key for Ansible
+      - name: Set up SSH Key for Ansible
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/apnea_key
@@ -90,7 +90,7 @@ jobs:
           ssh-keygen -y -f ~/.ssh/apnea_key > ~/.ssh/apnea_key.pub
         
       # 5. Get GitHub Runner IP
-      - name: 🌍 Get GitHub Runner IP
+      - name: Get GitHub Runner IP
         id: get_ip
         run: |
           RUNNER_IP=$(curl -s https://checkip.amazonaws.com)
@@ -98,11 +98,11 @@ jobs:
           echo "runner_ip=$RUNNER_IP" >> $GITHUB_ENV
 
       # 6. Setup Terraform
-      - name: 🏗️ Setup Terraform
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
       # 7. Deploy Infrastructure (Terraform auto-authenticates using the token from Step 1)
-      - name: 🚀 Deploy Infrastructure (Terraform)
+      - name: Deploy Infrastructure (Terraform)
         working-directory: ./infrastructure
         run: |
           terraform init
@@ -114,7 +114,9 @@ jobs:
           aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name apnea-api-eks-cluster
           
       # 9. Deploy the Application Manifests!
-      - name: 🚀 Deploy App to Kubernetes
+      - name: Deploy App to Kubernetes
         run: |
           kubectl apply -f k8s/apnea-app.yaml
-          kubectl rollout status deployment/apnea-app-deployment --timeout=120s
+          # Force the pods to restart and pull the fresh image from ECR
+          kubectl rollout restart deployment/apnea-app-deployment -n default
+          kubectl rollout status deployment/apnea-app-deployment -n default --timeout=120s

@@ -64,13 +64,14 @@ async def predict_csv(file: UploadFile = File(...), db: Session = Depends(get_db
             model="text-embedding-3-small"
         ).data[0].embedding
 
-        hits = qdrant.search(
+        search_result = qdrant.query_points(
             collection_name="clinical_guidelines",
-            query_vector=query_vector,
+            query=query_vector,
             limit=2 
         )
         
-        # Extract text from the database hits
+        # Extract the points from the response, then get the text
+        hits = search_result.points
         retrieved_context = "\n".join([hit.payload.get("page_content", "") for hit in hits])
 
         # Prompt the LLM
