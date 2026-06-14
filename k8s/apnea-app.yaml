@@ -58,17 +58,13 @@ apiVersion: v1
 kind: Service
 metadata:
   name: apnea-app-service
+  namespace: default
 spec:
-  # This tells AWS to provision a public-facing Application Load Balancer
-  type: LoadBalancer 
+  type: LoadBalancer
   selector:
-    app: apnea-app
+    app: apnea-app # Ensure this matches your deployment's labels
   ports:
-    - name: api
+    - name: http
+      port: 80           # The external port AWS listens on (Standard HTTP)
+      targetPort: 8501   # The internal port Streamlit is running on
       protocol: TCP
-      port: 8000
-      targetPort: 8000
-    - name: ui
-      protocol: TCP
-      port: 8501
-      targetPort: 8501
