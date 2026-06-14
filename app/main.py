@@ -65,7 +65,7 @@ async def predict_csv(file: UploadFile = File(...), db: Session = Depends(get_db
         ).data[0].embedding
 
         search_result = qdrant.query_points(
-            collection_name="clinical_guidelines",
+            collection_name="clinical_guidelines_v2",
             query=query_vector,
             limit=2 
         )
