@@ -38,7 +38,15 @@ spec:
           name: api-port
         - containerPort: 8501
           name: ui-port
-        # Maps the files from the shared volume directly to where the app expects them
+
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1536Mi"
+            cpu: "1000m"
+            
         volumeMounts:
         - name: model-weights-volume
           mountPath: /app/penta_lstm_OSA_weights.pth
