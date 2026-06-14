@@ -1,8 +1,11 @@
 import io
+import os
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 from sqlalchemy.orm import Session
+from qdrant_client import QdrantClient
+from openai import OpenAI
 
 from model import process_csv_and_predict
 from database import engine, Base, get_db
@@ -19,6 +22,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize RAG Clients (Using internal K8s DNS for Qdrant)
+qdrant = QdrantClient(url="http://qdrant-service:6333")
+llm_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @app.post("/predict_csv")
 async def predict_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
@@ -48,6 +55,41 @@ async def predict_csv(file: UploadFile = File(...), db: Session = Depends(get_db
         ca_w = sum(1 for x in results if x.get("predicted_class") == "Central Apnea")
         normal_w = sum(1 for x in results if x.get("predicted_class") == "Normal")
 
+        # --- NEW: RAG PIPELINE INTEGRATION ---
+        # Search Qdrant for relevant medical context
+        search_query = f"Patient has {osa_w} obstructive sleep apnea events and {ca_w} central apnea events. What is the clinical severity and scoring guideline?"
+        
+        query_vector = llm_client.embeddings.create(
+            input=[search_query], 
+            model="text-embedding-3-small"
+        ).data[0].embedding
+
+        hits = qdrant.search(
+            collection_name="clinical_guidelines",
+            query_vector=query_vector,
+            limit=2 
+        )
+        
+        # Extract text from the database hits
+        retrieved_context = "\n".join([hit.payload.get("page_content", "") for hit in hits])
+
+        # Prompt the LLM
+        prompt = f"""
+        You are an expert sleep medicine physician. 
+        Patient Data: {osa_w} OSA events, {ca_w} CA events.
+        Official AASM Guidelines: {retrieved_context}
+        
+        Write a brief, 3-sentence clinical summary of these findings based ONLY on the provided guidelines.
+        """
+
+        response = llm_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        clinical_summary = response.choices[0].message.content
+        # -------------------------------------
+
         # 3. Store result to SQL database
         session_record = db_models.DiagnosticSession(
             patient_id=patient.id,
@@ -61,13 +103,17 @@ async def predict_csv(file: UploadFile = File(...), db: Session = Depends(get_db
         db.add(session_record)
         db.commit()
 
-        return {"filename": file.filename, "predictions": results}
+        # Return the summary alongside the raw predictions
+        return {
+            "filename": file.filename, 
+            "predictions": results,
+            "clinical_summary": clinical_summary
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/history")
 def get_diagnostic_history(db: Session = Depends(get_db)):
-    # Returns history records to display in Streamlit
     records = db.query(db_models.DiagnosticSession).order_by(db_models.DiagnosticSession.created_at.desc()).all()
     return [
         {

@@ -1,4 +1,3 @@
----
 # 1. The Deployment (Computes & Pods)
 apiVersion: apps/v1
 kind: Deployment
@@ -20,7 +19,6 @@ spec:
       - name: fetch-ml-weights
         image: amazon/aws-cli:latest
         command: ["/bin/sh", "-c"]
-        # Pulls the weights from S3 and places them in temporary shared volume
         args:
           - |
             aws s3 cp s3://apnea-api-ml-weights-676206922033/penta_lstm_OSA_weights.pth /shared-weights/
@@ -38,15 +36,23 @@ spec:
           name: api-port
         - containerPort: 8501
           name: ui-port
+          
+        # 👇 NEW: Injecting the Secret 👇
+        env:
+          - name: OPENAI_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: openai-secret
+                key: OPENAI_API_KEY
 
         resources:
           requests:
             memory: "512Mi"
             cpu: "250m"
           limits:
-            memory: "1536Mi"
+            memory: "3072Mi"
             cpu: "1000m"
-            
+
         volumeMounts:
         - name: model-weights-volume
           mountPath: /app/penta_lstm_OSA_weights.pth
@@ -56,7 +62,6 @@ spec:
           subPath: penta_lstm_CA_weights.pth
           
       volumes:
-      # This creates an empty directory that lives only as long as the Pod does
       - name: model-weights-volume
         emptyDir: {}
 
@@ -70,9 +75,9 @@ metadata:
 spec:
   type: LoadBalancer
   selector:
-    app: apnea-app # Ensure this matches your deployment's labels
+    app: apnea-app 
   ports:
     - name: http
-      port: 80           # The external port AWS listens on (Standard HTTP)
-      targetPort: 8501   # The internal port Streamlit is running on
+      port: 80           
+      targetPort: 8501   
       protocol: TCP

@@ -13,3 +13,5 @@ scipy==1.13.1
 scikit-learn==1.5.2
 sqlalchemy==2.0.31
 psycopg2-binary==2.9.10
+openai
+qdrant-client
