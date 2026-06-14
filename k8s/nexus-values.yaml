@@ -1,0 +1,21 @@
+deployment:
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+
+nexus:
+  # 1. Turn off Docker to bypass the strict TLS/Domain Name requirements
+  docker:
+    enabled: false
+
+# 2. Turn off Ingress to bypass the K8s version mismatch error
+ingress:
+  enabled: false
+
+# 3. Use a standard AWS LoadBalancer 
+service:
+  type: LoadBalancer
+
+persistence:
+  enabled: false

@@ -1,0 +1,120 @@
+name: Apnea MLOps K8S Pipeline (CI/CD)
+
+on:
+  push:
+    branches:
+      - main # Runs the pipeline every time we push to main
+  workflow_dispatch:
+
+# Define global environment variables for the pipeline
+env:
+  AWS_REGION: "eu-central-1"
+  ANSIBLE_HOST_KEY_CHECKING: "False" # Bypasses the SSH 'yes/no' prompt
+
+jobs:
+  # ==========================================
+  # PHASE 1: CONTINUOUS INTEGRATION (Testing)
+  # ==========================================
+  integration-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Install Dependencies
+        working-directory: ./app
+        run: pip install -r requirements.txt
+
+      - name: 🐳 Test Docker Build
+        working-directory: ./app
+        run: docker build -t apnea-api-test .
+
+  # ==========================================
+  # PHASE 2: CONTINUOUS DEPLOYMENT (AWS & Ansible)
+  # ==========================================
+  deploy-to-aws:
+    needs: integration-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      # 1. Fetch Secrets from Vault FIRST using AppRole (Updated to v3)
+      - name: 🔐 Import Secrets from HCP Vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: 'https://vault-cluster-public-vault-8c7a912a.0a2ef11a.z1.hashicorp.cloud:8200' 
+          namespace: 'admin' 
+          method: approle
+          roleId: ${{ secrets.VAULT_ROLE_ID }}
+          secretId: ${{ secrets.VAULT_SECRET_ID }}
+          exportToken: true # This automatically leaves VAULT_TOKEN for Terraform to use!
+          secrets: |
+            secret/data/aws access_key | AWS_ACCESS_KEY_ID ;
+            secret/data/aws secret_key | AWS_SECRET_ACCESS_KEY
+
+      # 2. Configure AWS using the dynamic secrets Vault just injected
+      - name: ☁️ Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 3. Build and Push Image to ECR
+      - name: 🐳 Build and Push Image to ECR
+        working-directory: ./app
+        run: |
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
+          
+          echo "Logging into ECR..."
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_REGISTRY
+          
+          echo "Building and Pushing Image..."
+          docker build -t apnea-api:latest .
+          docker tag apnea-api:latest $ECR_REGISTRY/apnea-api:latest
+          docker push $ECR_REGISTRY/apnea-api:latest
+
+      # 4. Set up SSH Key for Ansible
+      - name: 🔑 Set up SSH Key for Ansible
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/apnea_key
+          chmod 600 ~/.ssh/apnea_key
+          ssh-keygen -y -f ~/.ssh/apnea_key > ~/.ssh/apnea_key.pub
+        
+      # 5. Get GitHub Runner IP
+      - name: 🌍 Get GitHub Runner IP
+        id: get_ip
+        run: |
+          RUNNER_IP=$(curl -s https://checkip.amazonaws.com)
+          echo "Runner IP is $RUNNER_IP"
+          echo "runner_ip=$RUNNER_IP" >> $GITHUB_ENV
+
+      # 6. Setup Terraform
+      - name: 🏗️ Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      # 7. Deploy Infrastructure (Terraform auto-authenticates using the token from Step 1)
+      - name: 🚀 Deploy Infrastructure (Terraform)
+        working-directory: ./infrastructure
+        run: |
+          terraform init
+          terraform apply -auto-approve -var='ssh_cidrs=["${{ secrets.MY_HOME_IP }}", "${{ env.runner_ip }}/32"]'
+
+      # 8. Connect the GitHub Runner to the new EKS Cluster
+      - name: ☸️ Authenticate with EKS Cluster
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name apnea-api-eks-cluster
+          
+      # 9. Deploy the Application Manifests!
+      - name: 🚀 Deploy App to Kubernetes
+        run: |
+          kubectl apply -f k8s/apnea-app.yaml
+          kubectl rollout status deployment/apnea-app-deployment --timeout=120s

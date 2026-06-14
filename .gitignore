@@ -1,0 +1,23 @@
+# Terraform state and secrets
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+*.tfvars
+
+# SSH Keys (Crucial!)
+*.pem
+*.key
+apnea_key
+apnea_key.pub
+
+# Python virtual environments & cache
+__pycache__/
+venv/
+.env
+
+# Machine Learning Weights
+*.pth
+*.ptdevops_env/
+
+# Local virtual environment
+devops_env/

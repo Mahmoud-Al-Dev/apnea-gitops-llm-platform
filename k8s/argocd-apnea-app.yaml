@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: apnea-ai-deployment
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/Mahmoud-Al-Dev/apnea-k8s-migration.git'
+    targetRevision: main
+    path: k8s # ArgoCD will scan this folder for YAML files to deploy
+  destination:
+    server: 'https://kubernetes.default.svc' # Deploys to the local EKS cluster
+    namespace: default # Deploys app into the default namespace
+  syncPolicy:
+    automated:
+      prune: true      # Automatically delete resources if removed them from GitHub
+      selfHeal: true   # If a pod is manually deleted ArgoCD will instantly recreate it

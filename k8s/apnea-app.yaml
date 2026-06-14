@@ -1,0 +1,74 @@
+---
+# 1. The Deployment (Computes & Pods)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apnea-app-deployment
+  labels:
+    app: apnea-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: apnea-app
+  template:
+    metadata:
+      labels:
+        app: apnea-app
+    spec:
+      initContainers:
+      - name: fetch-ml-weights
+        image: amazon/aws-cli:latest
+        command: ["/bin/sh", "-c"]
+        # Pulls the weights from S3 and places them in temporary shared volume
+        args:
+          - |
+            aws s3 cp s3://apnea-api-ml-weights-676206922033/penta_lstm_OSA_weights.pth /shared-weights/
+            aws s3 cp s3://apnea-api-ml-weights-676206922033/penta_lstm_CA_weights.pth /shared-weights/
+        volumeMounts:
+        - name: model-weights-volume
+          mountPath: /shared-weights
+
+      containers:
+      - name: apnea-main-container
+        image: 676206922033.dkr.ecr.eu-central-1.amazonaws.com/apnea-api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: api-port
+        - containerPort: 8501
+          name: ui-port
+        # Maps the files from the shared volume directly to where the app expects them
+        volumeMounts:
+        - name: model-weights-volume
+          mountPath: /app/penta_lstm_OSA_weights.pth
+          subPath: penta_lstm_OSA_weights.pth
+        - name: model-weights-volume
+          mountPath: /app/penta_lstm_CA_weights.pth
+          subPath: penta_lstm_CA_weights.pth
+          
+      volumes:
+      # This creates an empty directory that lives only as long as the Pod does
+      - name: model-weights-volume
+        emptyDir: {}
+
+---
+# 2. The Service (Networking & Load Balancing)
+apiVersion: v1
+kind: Service
+metadata:
+  name: apnea-app-service
+spec:
+  # This tells AWS to provision a public-facing Application Load Balancer
+  type: LoadBalancer 
+  selector:
+    app: apnea-app
+  ports:
+    - name: api
+      protocol: TCP
+      port: 8000
+      targetPort: 8000
+    - name: ui
+      protocol: TCP
+      port: 8501
+      targetPort: 8501
