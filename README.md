@@ -11,35 +11,8 @@
 
 ## Final Application Result
 
-<img width="3423" height="1758" alt="Screenshot from 2026-06-05 21-18-33" src="https://github.com/user-attachments/assets/1c0656cd-44bd-45e6-9bc5-a0b4831d8058" />
-## Technical Project Overview
+<img width="3599" height="1755" alt="Screenshot from 2026-06-14 22-37-26" src="https://github.com/user-attachments/assets/9ced24f8-e4ad-4995-adcf-4196aacf99dd" /><img width="3276" height="1953" alt="Screenshot from 2026-06-14 22-49-17" src="https://github.com/user-attachments/assets/6854239d-1fe4-48f9-af4a-7d5a782b41d7" />
 
-This project demonstrates an enterprise-grade, highly available MLOps lifecycle for a clinical sleep apnea diagnostic tool. It transitions the application from a traditional instance-based deployment to a fully orchestrated **Kubernetes (EKS)** environment. 
-
-By implementing the **GitOps** methodology, Infrastructure-as-Code (IaC), and a comprehensive observability stack, this pipeline ensures that the deep learning inference engine (FastAPI) and interactive frontend (Streamlit) are resilient, self-healing, and continuously synchronized with the source repository.
-
-## GitOps & Automation Workflow
-
-The architecture utilizes a decoupled CI/CD pattern to completely separate continuous integration from continuous deployment, ensuring maximum security and state consistency:
-
-* **Zero-Trust Secrets (HashiCorp Vault):** All AWS credentials and deployment tokens are completely removed from GitHub. The CI workflow authenticates via a machine-identity `AppRole` to dynamically fetch short-lived access keys.
-* **Immutable Infrastructure (Terraform):** Defines the underlying AWS environment. It automatically provisions a multi-AZ VPC and the managed EKS Control Plane, deploying memory-optimized `t3.medium` worker nodes.
-* **Continuous Integration (GitHub Actions):** Automates the testing, building, and packaging of the Python application containers upon every repository push.
-* **Artifact Management (Sonatype Nexus):** Built containers and heavy PyTorch model weights are securely pushed to a private Nexus registry, bypassing standard Docker Hub limits and ensuring tight access control.
-* **Continuous Deployment (ArgoCD):** Acts as the GitOps controller inside the EKS cluster. It continuously monitors the repository's `k8s/` manifests and automatically pulls state changes, instantly self-healing the infrastructure if live pods drift from the code.
-
-<img width="3237" height="1125" alt="Screenshot from 2026-06-05 21-17-16" src="https://github.com/user-attachments/assets/d0166831-e00d-4d3f-a727-c11c85b62cd0" />
-<img width="3502" height="1762" alt="Screenshot from 2026-06-05 21-16-38" src="https://github.com/user-attachments/assets/53551299-3be5-4b0b-982a-82523f9607ff" />
-
-## Infrastructure & Observability Deep Dive
-
-A production AI system requires constant monitoring to track inference latency, hardware utilization, and potential bottlenecks. This deployment leverages the **"App of Apps"** GitOps pattern to inject a full enterprise monitoring suite:
-
-* **Metrics Scraping (Prometheus):** Deployed via Helm through ArgoCD, bypassing EKS CRD limits using Server-Side Apply. It continuously scrapes CPU, RAM, and network metrics from the EC2 worker nodes and inference pods.
-* **Hardware Telemetry (Node Exporters):** DaemonSets automatically deploy to every AWS worker node to expose deep system-level metrics directly to Prometheus.
-* **Data Visualization (Grafana):** Connects directly to the Prometheus database to build centralized, dark-mode visual dashboards for real-time
-
-<img width="3560" height="1798" alt="Screenshot from 2026-06-05 21-15-48" src="https://github.com/user-attachments/assets/9e1abccc-299d-4b9d-bc03-d1ee3eafeb32" />
 
 ## Repository Structure
 
